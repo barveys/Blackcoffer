@@ -1,7 +1,11 @@
+from asyncio.windows_events import NULL
+from pandas import notnull
 from selenium import webdriver
-from selenium.webdriver.support import expected_conditions
-from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
+import os
+from pathlib import Path
+
+from InputReader import InputReader
 class DataExtractor:
     
     #Constructor 
@@ -25,6 +29,20 @@ class DataExtractor:
         return element
 
 if __name__=="__main__":
+    cwd = os.getcwd()
+    print(f"Path = {cwd}")
+    input=InputReader("Code\Input.xlsx")
+    print(f"input read succfully with size{input.data.shape}")
+    urlsList=input.data["URL"]
     extractor_obj=DataExtractor()
-    extractor_obj.openUrl("https://insights.blackcoffer.com/impacts-of-covid-19-on-vegetable-vendors-and-food-stalls/")
-    data= extractor_obj.findElementByClassName("td-post-content")
+    for url in urlsList:
+        print(f"Reading URl {url}")
+        if url != NULL and url !="":
+            extractor_obj.openUrl(url)
+            data= extractor_obj.findElementByClassName("td-post-content")
+            print(f"Data Extracted for Urls {url}\n")
+            output_file = Path(cwd+f"\\Code\\Data\\{url[8:-2]}.txt")
+            output_file.parent.mkdir(exist_ok=True, parents=True)
+            with open(output_file,"w",encoding="utf-8") as f:
+                f.writelines(data.text)
+                print(f"Data Written in the files successfully")
