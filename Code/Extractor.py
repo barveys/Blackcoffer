@@ -1,5 +1,6 @@
 from asyncio.windows_events import NULL
 from importlib.resources import path
+from inspect import isfunction
 from select import select
 from pandas import notnull
 from selenium import webdriver
@@ -121,7 +122,30 @@ def CleanTheArticleWithStopWord(current_path, stopWords):
                 with open(output_file,"w",encoding="utf-8") as f:
                     f.writelines(newlines)
                     print(f"Data Written in the files successfully")    
-                            
+
+'''Read and creats a dictionary of postive words'''
+
+def ReadandCreatePostiveWordDictionary(current_Path, stop_Words):
+
+    input_Path= current_Path#Path(f"{current_Path}\Code\MasterDictionary\positive-words.txt")
+    posotive_words=[]
+    with open(input_Path, "r") as f:
+        line= f.readline()
+        while line != "":
+            word=line.strip().upper()
+            isWordFound= False
+            for stop_word in stop_Words:
+                if stop_word.upper() == word:
+                    isWordFound= True
+            
+            if not isWordFound:
+                posotive_words.append(word)
+
+            line= f.readline()
+    return posotive_words
+
+
+
 
 if __name__=="__main__":
     current_path=os.getcwd()
@@ -130,5 +154,18 @@ if __name__=="__main__":
     print("\n------------------Reading Stop Words Started-----------------------\n")
     StopWords=CleanData(current_path)
     print("\n------------------Reading Stop Words Completed-----------------------\n")
-    #print(StopWords)
-    CleanTheArticleWithStopWord(current_path, StopWords)
+
+    # print("\n ------------------ Cleaning the files using stop words started --------------------\n")
+    # CleanTheArticleWithStopWord(current_path, StopWords)
+    # print("\n ------------------ Cleaning the files using stop words Completed --------------------\n")
+    master_Dictionary= {}
+    print("\n ------------------ Creating Postive Word Dictionary started --------------------\n")
+    
+    master_Dictionary.update({"Postive": ReadandCreatePostiveWordDictionary(Path(f"{current_path}\Code\MasterDictionary\positive-words.txt"), StopWords)})
+    print("\n ------------------ Creating Postive Word Dictionary Completed --------------------\n")
+
+    print("\n ------------------ Creating Negative Word Dictionary started --------------------\n")
+    master_Dictionary.update({"Negative": ReadandCreatePostiveWordDictionary(Path(f"{current_path}\Code\MasterDictionary\\negative-words.txt"), StopWords)})
+    print("\n ------------------ Creating Negative Word Dictionary Completed --------------------\n")
+
+    print(master_Dictionary)
