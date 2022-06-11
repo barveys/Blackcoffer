@@ -131,3 +131,4 @@ Logs/
 .idea/
 test.txt
 20211030 Test Assignment-20220605T110116Z-001
+*.ipynb

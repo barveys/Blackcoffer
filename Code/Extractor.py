@@ -1,12 +1,15 @@
-from asyncio.windows_events import NULL
-from importlib.resources import path
-from inspect import isfunction
-from select import select
-from pandas import notnull
+from doctest import master
+from numpy import iscomplex
 from selenium import webdriver
 from webdriver_manager.chrome import ChromeDriverManager
 import os
 from pathlib import Path
+import nltk
+from nltk.tokenize import word_tokenize,sent_tokenize
+import pandas as pd
+from nltk.corpus import stopwords
+from nltk.tokenize import RegexpTokenizer
+
 
 from InputReader import InputReader
 class DataExtractor:
@@ -144,20 +147,172 @@ def ReadandCreatePostiveWordDictionary(current_Path, stop_Words):
             line= f.readline()
     return posotive_words
 
+'''
+function used to return the list of the tokens from the given file path
+'''
+def GetTokensForTheInputStream(file_Path):
+    list_of_tokens=[]
+    total_no_of_lines=0
+    with open( file_Path, "r", encoding="utf-8") as f:
+        line= f.readline()
+        
+        while line != "":
+            #total_no_of_lines+=1
+            #tokens=word_tokenize(line, preserve_line=True)
+            total_no_of_lines+=len(sent_tokenize(line))
+            tokenizer = RegexpTokenizer(r'\w+')
+            tokens=tokenizer.tokenize(line)
+            #print(tokens)
+            list_of_tokens.extend(tokens)
+            line= f.readline()
+    
+    return (list_of_tokens,total_no_of_lines)
+
+def CalculatePostiveAndNegativeScore(base_path,master_dict):
+    file_parent_path=f"{base_path}\StopWordRemovedData"
+    files=os.listdir(file_parent_path)
+    dict_for_number_of_line={}
+    average_number_of_words_per_sentance={}
+    for file in files:
+        filename= file[:-4]
+        extension= file[len(file)-4:]
+        if extension== ".txt":
+            outputFile_Path= Path(f"{base_path}\Tokens\{filename}.csv")
+            out=GetTokensForTheInputStream(Path(f"{file_parent_path}\\{file}"))
+            total_valid_token= CalculatePostiveScore(outputFile_Path,out[0], master_dict )
+            dict_for_number_of_line.update({filename:out[1]})
+            average_number_of_words_per_sentance.update({filename:(round(len(total_valid_token)/out[1]))})
+    #print(dict_for_number_of_line) 
+    #print(average_number_of_words_per_sentance)    
+
+    POSITIVE_SCORE=[]
+    NEGATIVE_SCORE=[]
+    Polarity_Score=[]
+    Subjectivity_Score=[]
+    PERCENTAGE_OF_COMPLEX_WORDS=[]
+    FOG_INDEX=[]
+    COMPLEX_WORD_COUNT=[]
+    WORD_COUNT=[]
+    SYLLABLE_PER_WORD=[]
+    AVG_WORD_LENGTH=[]
+    URL=[]
+    files=os.listdir(f"{base_path}\Tokens")
+    for file in files:
+        filename= file[:-4]
+        extension= file[len(file)-4:]
+        if extension== ".csv":
+            input_Path= Path(f"{base_path}\Tokens\{filename}.csv")
+            temp_da= pd.read_csv(input_Path)
+            POSITIVE_SCORE.append(temp_da[temp_da["Score"]==1].sum()["Score"])
+            NEGATIVE_SCORE.append(temp_da[temp_da["Score"]==-1].sum()["Score"]*-1)
+            #Polarity Score = (Positive Score – Negative Score)/ ((Positive Score + Negative Score) + 0.000001)
+            Polarity_Score.append((POSITIVE_SCORE[-1]-NEGATIVE_SCORE[-1])/((POSITIVE_SCORE[-1]+NEGATIVE_SCORE[-1])+ 0.000001))
+            #Subjectivity Score = (Positive Score + Negative Score)/ ((Total Words after cleaning) + 0.000001)
+            Subjectivity_Score.append((POSITIVE_SCORE[-1]+NEGATIVE_SCORE[-1])/((temp_da.shape[0])+ 0.000001))
+            #Percentage of Complex words = the number of complex words / the number of words 
+            PERCENTAGE_OF_COMPLEX_WORDS.append(temp_da[temp_da["IsComplex"]==1].shape[0]/temp_da.shape[0])
+
+            #Fog Index = 0.4 * (Average Sentence Length + Percentage of Complex words)
+            FOG_INDEX.append(0.4*(PERCENTAGE_OF_COMPLEX_WORDS[-1]+average_number_of_words_per_sentance[filename]))
+
+            COMPLEX_WORD_COUNT.append(temp_da[temp_da["IsComplex"]==1].shape[0])
+
+            WORD_COUNT.append(temp_da.shape[0])
+
+            SYLLABLE_PER_WORD.append(temp_da["Syllable_Count"].sum())
+            AVG_WORD_LENGTH.append(calcualte_average_wordLenght(input_Path))
+            URL.append(filename)
+    finnal_data_frame=pd.DataFrame()
+    finnal_data_frame["File_Name"]= URL
+    finnal_data_frame["POSITIVE_SCORE"]= POSITIVE_SCORE
+    finnal_data_frame["NEGATIVE_SCORE"]= NEGATIVE_SCORE
+    finnal_data_frame["Polarity_Score"]= Polarity_Score
+    finnal_data_frame["Subjectivity_Score"]= Subjectivity_Score
+    finnal_data_frame["Average_Sentence_Length"]= average_number_of_words_per_sentance.values()
+    finnal_data_frame["PERCENTAGE_OF_COMPLEX_WORDS"]= PERCENTAGE_OF_COMPLEX_WORDS
+    finnal_data_frame["FOG_INDEX"]= FOG_INDEX
+    finnal_data_frame["AVG_NUMBER_OF_WORDS_PER_SENTENCE"]= average_number_of_words_per_sentance.values()
+    finnal_data_frame["COMPLEX_WORD_COUNT"]= COMPLEX_WORD_COUNT
+    finnal_data_frame["WORD_COUNT"]= WORD_COUNT
+    finnal_data_frame["SYLLABLE_PER_WORD"]= SYLLABLE_PER_WORD
+    finnal_data_frame["AVG_WORD_LENGTH"]= AVG_WORD_LENGTH
+
+    finnal_data_frame.to_csv(f"{base_path}\\Output_Data.csv")
+
+
+    #data_frame.to_csv(outputFile_Path)
+
+def calcualte_average_wordLenght(filePath):
+
+    data=pd.read_csv(filePath)
+    words_list=data["Token"]
+    count =0
+    for word in words_list:
+        count+=len(word)
+    return round(count/len(words_list))
+
+
+def CalculatePostiveScore(file_name, tokens, master_Dictionary):
+
+    postive= master_Dictionary["Postive"]
+    negative= master_Dictionary["Negative"]
+    nltk_stopWords=[w.strip().upper() for w in stopwords.words('english')]
+    tokeValue=[]
+    temp_token=[]
+    sylabee_Count=[]
+    word_lenght=[]
+    isComplex=[]
+    for tok in tokens:
+        if tok.strip().upper() not in nltk_stopWords:
+            temp_token.append(tok)
+
+    for token in temp_token:
+        word=token.strip().upper()
+        sylabbe=Calculate_Sylabee(word)
+        sylabee_Count.append(sylabbe)
+        isComplex.append( 1 if sylabbe>2 else 0)
+        word_lenght.append(len(word))
+        if word in postive:
+            tokeValue.append(1)
+        elif word in negative:
+            tokeValue.append(-1) 
+        else :
+            tokeValue.append(0) 
+    dataframe= pd.DataFrame(index=None)
+    dataframe["Token"]= temp_token
+    dataframe["Score"]= tokeValue
+    dataframe["Syllable_Count"]= sylabee_Count
+    dataframe["Word_length"]= word_lenght
+    dataframe["IsComplex"]= isComplex
+
+    dataframe.to_csv(file_name)
+    return temp_token
+
+def Calculate_Sylabee(word):
+
+    vovles=['a','e','i','o','u']
+    count =0
+    if word.strip().lower().endswith("es") or word.strip().lower().endswith("ed"):
+        return count
+
+    for letter in word:
+        if letter.strip().lower() in vovles:
+            count+=1
+    return count
 
 
 
 if __name__=="__main__":
     current_path=os.getcwd()
-    #ExtractData()
+    ExtractData()
 
     print("\n------------------Reading Stop Words Started-----------------------\n")
     StopWords=CleanData(current_path)
     print("\n------------------Reading Stop Words Completed-----------------------\n")
 
-    # print("\n ------------------ Cleaning the files using stop words started --------------------\n")
-    # CleanTheArticleWithStopWord(current_path, StopWords)
-    # print("\n ------------------ Cleaning the files using stop words Completed --------------------\n")
+    print("\n ------------------ Cleaning the files using stop words started --------------------\n")
+    CleanTheArticleWithStopWord(current_path, StopWords)
+    print("\n ------------------ Cleaning the files using stop words Completed --------------------\n")
     master_Dictionary= {}
     print("\n ------------------ Creating Postive Word Dictionary started --------------------\n")
     
@@ -168,4 +323,11 @@ if __name__=="__main__":
     master_Dictionary.update({"Negative": ReadandCreatePostiveWordDictionary(Path(f"{current_path}\Code\MasterDictionary\\negative-words.txt"), StopWords)})
     print("\n ------------------ Creating Negative Word Dictionary Completed --------------------\n")
 
-    print(master_Dictionary)
+    #print(master_Dictionary)
+    # once time activity 
+    nltk.download('punkt')
+    nltk.download('stopwords')
+    print("\n ------------------ Creating Token started --------------------\n")
+    CalculatePostiveAndNegativeScore((Path(f"{current_path}\Code\Data")), master_Dictionary)
+
+    print("\n ------------------ Creating Token Ended --------------------\n")
